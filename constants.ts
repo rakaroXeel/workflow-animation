@@ -68,26 +68,28 @@ export const SERVICES: Service[] = [
 export const WORKFLOW_INFO = {
   cloud: {
     title: "In Cloud Flow",
-    description: "Architettura a 3 livelli: Azienda, Cloud Cliente (Privato) e Servizi AI (Esterni).",
+    description: "Architettura SaaS: Interfaccia e AI nel Cloud, Storage sincronizzato.",
     steps: [
-      { title: "1. Richiesta Utente", desc: "L'utente interagisce con l'interfaccia nel perimetro aziendale." },
-      { title: "2. Recupero Dati", desc: "L'interfaccia recupera i documenti grezzi dallo Storage locale." },
-      { title: "3. Cloud del Cliente", desc: "I dati vengono inviati al Vector DB (nel cloud privato del cliente) per l'indicizzazione." },
-      { title: "4. Cloud Esterno (AI)", desc: "Solo il contesto necessario viene inviato a OpenAI per l'elaborazione." },
-      { title: "5. Risposta", desc: "L'AI restituisce l'output all'interfaccia aziendale." }
+      { title: "1. Richiesta Web", desc: "L'utente accede alla Web App (Interface) ospitata nel Cloud Esterno." },
+      { title: "2. Sync Dati", desc: "Lo Storage Aziendale sincronizza i documenti con il Vector DB (Cloud Cliente)." },
+      { title: "3. Ricerca Vettoriale", desc: "L'Interfaccia interroga il Vector DB per trovare i documenti pertinenti." },
+      { title: "4. Processing AI", desc: "Il Vector DB invia il contesto a OpenAI (Cloud Esterno)." },
+      { title: "5. Generazione Risposta", desc: "OpenAI elabora la risposta e la invia all'Interfaccia Web." },
+      { title: "6. Visualizzazione", desc: "L'utente visualizza i risultati finali e i documenti sull'Interfaccia." }
     ],
-    pros: ["Scalabilità Immediata", "Separazione Dati/AI", "Infrastruttura gestita"],
+    pros: ["Scalabilità Immediata", "Accesso Ovunque", "Manutenzione Zero"],
     cons: ["Dipendenza da provider esterni"]
   },
   onPremise: {
     title: "On Premise Flow",
-    description: "Massima privacy con modelli Open Source locali.",
+    description: "Architettura Locale: Tutto risiede sui server aziendali. Nessun dato esce.",
     steps: [
-      { title: "1. Richiesta Utente", desc: "L'utente interagisce con la piattaforma interna." },
-      { title: "2. Recupero Dati", desc: "Recupero sicuro dallo storage locale." },
-      { title: "3. Vector Search (Local)", desc: "Ricerca semantica su istanza vettoriale locale." },
-      { title: "4. Elaborazione Locale", desc: "DeepSeek elabora i dati sui server aziendali." },
-      { title: "5. Risposta", desc: "Risultato visualizzato senza uscire dalla rete." }
+      { title: "1. Richiesta Intranet", desc: "L'utente accede alla Piattaforma AI ospitata nel Data Center Aziendale." },
+      { title: "2. Sync Locale", desc: "Lo Storage interno alimenta il Vector DB locale via rete LAN sicura." },
+      { title: "3. Ricerca Interna", desc: "L'Interfaccia interroga il Vector DB locale per recuperare i dati." },
+      { title: "4. Processing Locale", desc: "Il modello LLM Service (ospitato localmente) elabora la richiesta." },
+      { title: "5. Risposta AI", desc: "L'AI genera la risposta senza mai connettersi a internet." },
+      { title: "6. Visualizzazione", desc: "L'utente riceve i dati. Tutto il traffico rimane nel perimetro aziendale." }
     ],
     pros: ["Massima Compliance", "Controllo totale", "Nessuna fuga di dati"],
     cons: ["Costo hardware iniziale", "Gestione infrastruttura"]

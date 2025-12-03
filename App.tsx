@@ -15,7 +15,8 @@ import {
   Lock,
   User,
   Layout,
-  HardDrive
+  HardDrive,
+  Cpu
 } from 'lucide-react';
 import { WORKFLOW_INFO } from './constants';
 import { ChatMessage } from './types';
@@ -96,32 +97,24 @@ const IsoZoneBorder: React.FC<{
   const height = 2; // Floor height
 
   // Correct calculation for corners of the grid rectangle in isometric space
-  // Corner 1: Top (minX, minY)
-  const topX = (minX - minY) * tileWidth;
-  const topY = (minX + minY) * tileHeight - height;
-  // Adjust for tile geometry (Top vertex of the tile at minX, minY)
-  // Actually, 'Top' of the DIAMOND cluster corresponds to the Top vertex of tile (minX, minY)
-  // No, in (x-y) projection:
-  // minX, minY (-2, 0) -> -120, -60.
-  // maxX, minY (0, 0) -> 0, 0.
-  // So (-2,0) is Top-Left. (0,0) is Top-Right.
-  // We need to trace:
-  // 1. Top of (minX, minY)
-  // 2. Right of (maxX, minY)
-  // 3. Bottom of (maxX, maxY)
-  // 4. Left of (minX, maxY)
+  // We need the visual outer corners of the diamond group defined by grid coords [minX, maxX] x [minY, maxY]
 
+  // Top Corner: Corresponds to (minX, minY) -> visual top
   const v1X = (minX - minY) * tileWidth;
-  const v1Y = (minX + minY) * tileHeight - height; // Top of Top-Left tile
+  const v1Y = (minX + minY) * tileHeight - height; 
 
+  // Right Corner: Corresponds to (maxX, minY) -> visual right
+  // We add +30 to x and +15 to y because the coordinate origin is center of tile, but we want edge
   const v2X = (maxX - minY) * tileWidth + 30;
-  const v2Y = (maxX + minY) * tileHeight + 15 - height; // Right of Top-Right tile
+  const v2Y = (maxX + minY) * tileHeight + 15 - height;
 
+  // Bottom Corner: Corresponds to (maxX, maxY) -> visual bottom
   const v3X = (maxX - maxY) * tileWidth;
-  const v3Y = (maxX + maxY) * tileHeight + 30 - height; // Bottom of Bottom-Right tile
+  const v3Y = (maxX + maxY) * tileHeight + 30 - height;
 
+  // Left Corner: Corresponds to (minX, maxY) -> visual left
   const v4X = (minX - maxY) * tileWidth - 30;
-  const v4Y = (minX + maxY) * tileHeight + 15 - height; // Left of Bottom-Left tile
+  const v4Y = (minX + maxY) * tileHeight + 15 - height;
 
   const pathD = `M${v1X} ${v1Y} L${v2X} ${v2Y} L${v3X} ${v3Y} L${v4X} ${v4Y} Z`;
 
@@ -168,8 +161,6 @@ const IsoPath: React.FC<{
   const endX = (to.x - to.y) * tileWidth;
   const endY = (to.x + to.y) * tileHeight - toH;
 
-  // Calculate a mid-point for "dog-leg" routing if needed, or straight line
-  // For simplicity, using straight lines but with an arc logic for jumps could be cool
   const pathD = `M${startX} ${startY} L${endX} ${endY}`;
 
   return (
@@ -264,184 +255,209 @@ const WorkflowVisualizer: React.FC = () => {
               </defs>
 
               <g transform="translate(0, 100)">
-                 {/* 1. COMPANY ZONE (Base Plate) - Blue */}
-                 <g>
-                   {[0, 1, 2].map(row => (
-                     [-2, -1, 0].map(col => (
-                        <IsoBlock 
-                          key={`comp-${row}-${col}`} 
-                          x={col} y={row} 
-                          color="#bfdbfe" topColor="#dbeafe" sideColor="#93c5fd" 
-                          height={2}
-                          scale={1}
-                        />
-                     ))
-                   ))}
-                 </g>
                  
-                 {/* RED PERIMETER AROUND COMPANY ZONE */}
-                 {/* We apply padding by expanding the min/max coordinates slightly */}
-                 <IsoZoneBorder 
-                    minX={-2.2} maxX={0.2}
-                    minY={-0.2} maxY={2.2}
-                    color="#ef4444"
-                 />
-
-                 {/* 2. CLIENT CLOUD ZONE - Cyan/Teal (New Island) */}
+                 {/* 1. FLOOR / ENVIRONMENT */}
+                 
+                 {/* CLOUD MODE: 3 Distinct Islands */}
                  {mode === 'cloud' && (
-                    <g>
-                      {/* Placing it at x=2, y=1 approx */}
-                      <IsoBlock 
-                          key={`client-cloud-floor`} 
-                          x={2} y={1} 
-                          color="#a5f3fc" topColor="#cffafe" sideColor="#67e8f9" 
-                          height={2}
-                        />
-                    </g>
+                   <>
+                     {/* Company Island */}
+                     <g>
+                       {[0, 1, 2].map(row => (
+                         [-2, -1, 0].map(col => (
+                            <IsoBlock 
+                              key={`comp-${row}-${col}`} 
+                              x={col} y={row} 
+                              color="#bfdbfe" topColor="#dbeafe" sideColor="#93c5fd" 
+                              height={2}
+                              scale={1}
+                            />
+                         ))
+                       ))}
+                     </g>
+                     {/* Client Cloud Island */}
+                     <g>
+                        <IsoBlock x={3} y={1} color="#a5f3fc" topColor="#cffafe" sideColor="#67e8f9" height={2} />
+                     </g>
+                     {/* External Cloud Island */}
+                     <g>
+                         <IsoBlock x={3} y={-2} color="#f1f5f9" topColor="#f8fafc" sideColor="#e2e8f0" height={2} />
+                         <IsoBlock x={1} y={-2} color="#f1f5f9" topColor="#f8fafc" sideColor="#e2e8f0" height={2} />
+                     </g>
+                   </>
                  )}
 
-                 {/* 3. EXTERNAL CLOUD ZONE - Grey/Green (Further out) */}
-                 {mode === 'cloud' && (
-                    <g>
-                       {/* Placing it at x=2, y=-1 */}
-                       <IsoBlock 
-                          key={`ext-cloud-floor`} 
-                          x={2} y={-1} 
-                          color="#f1f5f9" topColor="#f8fafc" sideColor="#e2e8f0" 
-                          height={2}
-                        />
-                    </g>
+                 {/* ON PREMISE MODE: One Large Unified Floor */}
+                 {mode === 'onPremise' && (
+                   <g>
+                      {/* Generating a large contiguous floor to cover all blocks */}
+                      {[0, 1, 2, 3].map(row => (
+                         [-2, -1, 0, 1, 2, 3].map(col => {
+                            // Skip some tiles to make it look like a connected facility but not a full rectangle
+                            // We need to cover: (-2,2), (-2,0), (1,-2), (3,1), (3,-2)
+                            // We need to bridge the gap.
+                            
+                            // Let's just render specific coordinate patches to connect them
+                            const isZone = 
+                              (col <= 0 && row >= 0) || // Original Company area
+                              (col >= 1 && row <= 2 && row >= -2) // Cloud area becomes local server room
+                              ;
+                            
+                            if (isZone) {
+                               return (
+                                <IsoBlock 
+                                  key={`prem-${row}-${col}`} 
+                                  x={col} y={row} 
+                                  color="#e2e8f0" topColor="#f1f5f9" sideColor="#cbd5e1" 
+                                  height={2}
+                                  scale={1}
+                                />
+                               );
+                            }
+                            return null;
+                         })
+                      ))}
+                      {/* Extra tiles to bridge specific gaps if needed */}
+                       <IsoBlock x={1} y={-1} color="#e2e8f0" topColor="#f1f5f9" sideColor="#cbd5e1" height={2} />
+                       <IsoBlock x={1} y={-2} color="#e2e8f0" topColor="#f1f5f9" sideColor="#cbd5e1" height={2} />
+                       <IsoBlock x={2} y={-2} color="#e2e8f0" topColor="#f1f5f9" sideColor="#cbd5e1" height={2} />
+                       <IsoBlock x={3} y={-2} color="#e2e8f0" topColor="#f1f5f9" sideColor="#cbd5e1" height={2} />
+                   </g>
+                 )}
+                 
+                 {/* BORDERS */}
+                 {mode === 'cloud' ? (
+                   // Cloud Mode: Only around Company Zone
+                   <IsoZoneBorder 
+                      minX={-2.2} maxX={0.2}
+                      minY={-0.2} maxY={2.2}
+                      color="#ef4444"
+                   />
+                 ) : (
+                   // On Premise Mode: Around EVERYTHING
+                   // Bounding box covering (-2,0) to (3,1) and (-2,2) to (3,-2)
+                   // Roughly minX=-2.2, maxX=3.2, minY=-2.2, maxY=2.2
+                   <IsoZoneBorder 
+                      minX={-2.2} maxX={3.5}
+                      minY={-2.5} maxY={2.5}
+                      color="#ef4444"
+                   />
                  )}
 
 
                  {/* 3. BLOCKS PLACEMENT */}
                  
-                 {/* --- COMPANY BLOCKS --- */}
+                 {/* --- COMMON BLOCKS (Different labels based on mode) --- */}
                  
-                 {/* USER (Start) - Bottom Left of Company Zone */}
+                 {/* USER (Start) - Bottom Left */}
                  <IsoBlock 
                    x={-2} y={2} 
                    color="#3b82f6" topColor="#60a5fa" sideColor="#2563eb" 
                    height={20} 
                    icon={<User size={18} />} 
                    label="User" 
-                   active={activeStep === 0} 
+                   active={activeStep === 0 || activeStep === 5} 
                  />
 
-                 {/* INTERFACE (Hub) - Center/Top of Company Zone */}
-                 <IsoBlock 
-                   x={0} y={2} 
-                   color="#3b82f6" topColor="#60a5fa" sideColor="#2563eb" 
-                   height={30} 
-                   icon={<Layout size={20} />} 
-                   label="Interface" 
-                   active={activeStep === 0 || activeStep === 1 || activeStep === 4} 
-                 />
-
-                 {/* STORAGE (DB) - Top Left of Company Zone */}
+                 {/* STORAGE (DB) - Top Left */}
                  <IsoBlock 
                    x={-2} y={0} 
                    color="#3b82f6" topColor="#60a5fa" sideColor="#2563eb" 
                    height={25} 
                    icon={<HardDrive size={18} />} 
                    label="Int. Storage" 
-                   active={activeStep === 1 || activeStep === 2} 
+                   active={activeStep === 1} 
+                 />
+                 
+                 {/* INTERFACE (SaaS vs Intranet) */}
+                 <IsoBlock 
+                    x={1} y={-2} 
+                    color={mode === 'cloud' ? "#475569" : "#6366f1"} 
+                    topColor={mode === 'cloud' ? "#64748b" : "#818cf8"} 
+                    sideColor={mode === 'cloud' ? "#334155" : "#4f46e5"} 
+                    height={30} 
+                    icon={<Layout size={20} />} 
+                    label={mode === 'cloud' ? "Interface" : "Intranet App"} 
+                    active={activeStep === 0 || activeStep === 2 || activeStep === 4 || activeStep === 5} 
+                  />
+
+                 {/* VECTOR DB */}
+                 <IsoBlock 
+                   x={3} y={1} 
+                   color={mode === 'cloud' ? "#06b6d4" : "#6366f1"} 
+                   topColor={mode === 'cloud' ? "#22d3ee" : "#818cf8"} 
+                   sideColor={mode === 'cloud' ? "#0891b2" : "#4f46e5"} 
+                   height={40} 
+                   icon={<Database size={20} />} 
+                   label="Vector DB" 
+                   active={activeStep === 1 || activeStep === 2 || activeStep === 3} 
+                 />
+
+                 {/* AI MODEL (OpenAI vs DeepSeek) */}
+                 <IsoBlock 
+                   x={3} y={-2} 
+                   color={mode === 'cloud' ? "#10b981" : "#8b5cf6"} // Green for OpenAI, Violet for DeepSeek
+                   topColor={mode === 'cloud' ? "#34d399" : "#a78bfa"} 
+                   sideColor={mode === 'cloud' ? "#059669" : "#7c3aed"} 
+                   height={35} 
+                   icon={mode === 'cloud' ? <BrainCircuit size={20} /> : <Cpu size={20} />} 
+                   label={mode === 'cloud' ? "OpenAI API" : "LLM Service"} 
+                   active={activeStep === 3 || activeStep === 4} 
                  />
 
 
-                 {/* --- CLOUD BLOCKS --- */}
-                 {mode === 'cloud' && (
-                   <>
-                     {/* VECTOR DB - CLIENT CLOUD (New Location) */}
-                     {/* Coords: x=3, y=1 */}
-                     <IsoBlock 
-                       x={3} y={1} 
-                       color="#06b6d4" topColor="#22d3ee" sideColor="#0891b2" // Cyan for Client Cloud
-                       height={40} 
-                       icon={<Database size={20} />} 
-                       label="Vector DB" 
-                       active={activeStep === 2 || activeStep === 3} 
-                     />
-
-                     {/* OPENAI - EXTERNAL CLOUD */}
-                     {/* Coords: x=3, y=-2 */}
-                     <IsoBlock 
-                       x={3} y={-2} 
-                       color="#10b981" topColor="#34d399" sideColor="#059669" 
-                       height={35} 
-                       icon={<BrainCircuit size={20} />} 
-                       label="OpenAI API" 
-                       active={activeStep === 3 || activeStep === 4} 
-                     />
-                   </>
-                 )}
-
-                 {/* --- PATHS & LOGIC --- */}
-                 {mode === 'cloud' && (
-                   <>
-                      {/* Step 1: User -> Interface */}
-                      <IsoPath 
-                        from={{x: -2, y: 2, height: 20}} 
-                        to={{x: 0, y: 2, height: 30}} 
-                        active={activeStep === 0}
-                      />
-
-                      {/* Step 2: Interface -> Storage (Fetch Docs) */}
-                      <IsoPath 
-                        from={{x: 0, y: 2, height: 30}} 
-                        to={{x: -2, y: 0, height: 25}} 
-                        active={activeStep === 1}
-                      />
-
-                      {/* Step 3: Storage -> Vector DB (Client Cloud) */}
-                      <IsoPath 
-                        from={{x: -2, y: 0, height: 25}} 
-                        to={{x: 3, y: 1, height: 40}} 
-                        active={activeStep === 2}
-                        color="#06b6d4" // Cyan
-                      />
-
-                      {/* Step 4: Vector DB -> OpenAI (External) */}
-                      <IsoPath 
-                         from={{x: 3, y: 1, height: 40}} 
-                         to={{x: 3, y: -2, height: 35}} 
-                         active={activeStep === 3}
-                         color="#10b981"
-                      />
-
-                      {/* Step 5: OpenAI -> Interface (Response) */}
-                      <IsoPath 
-                        from={{x: 3, y: -2, height: 35}} 
-                        to={{x: 0, y: 2, height: 30}} 
-                        active={activeStep === 4}
-                        color="#10b981"
-                      />
-                   </>
-                 )}
+                 {/* --- PATHS --- */}
                  
-                 {/* On Premise Placeholder paths (simplified for now as requested) */}
-                 {mode === 'onPremise' && (
-                    <>
-                       {/* Same Internal Structure */}
-                       <IsoPath 
-                        from={{x: -2, y: 2, height: 20}} 
-                        to={{x: 0, y: 2, height: 30}} 
-                        active={activeStep === 0}
-                      />
-                      <IsoPath 
-                        from={{x: 0, y: 2, height: 30}} 
-                        to={{x: -2, y: 0, height: 25}} 
-                        active={activeStep === 1}
-                      />
-                      {/* Local Loop */}
-                      <IsoPath 
-                        from={{x: -2, y: 0, height: 25}} 
-                        to={{x: 0, y: 2, height: 30}} 
-                        active={activeStep >= 2}
-                        color="#ea580c"
-                      />
-                    </>
-                 )}
+                 {/* Paths are geometrically the same for both modes in this updated layout, 
+                     but the meaning changes. We can reuse the coordinates. */}
+                 
+                  {/* Step 1: User -> Interface */}
+                  <IsoPath 
+                    from={{x: -2, y: 2, height: 20}} 
+                    to={{x: 1, y: -2, height: 30}} 
+                    active={activeStep === 0}
+                    color={mode === 'onPremise' ? "#818cf8" : "#cbd5e1"}
+                  />
+
+                  {/* Step 2: Storage -> Vector DB [SYNC] */}
+                  <IsoPath 
+                    from={{x: -2, y: 0, height: 25}} 
+                    to={{x: 3, y: 1, height: 40}} 
+                    active={activeStep === 1}
+                    color={mode === 'onPremise' ? "#818cf8" : "#06b6d4"} 
+                  />
+
+                  {/* Step 3: Interface -> Vector DB [SEARCH] */}
+                  <IsoPath 
+                    from={{x: 1, y: -2, height: 30}} 
+                    to={{x: 3, y: 1, height: 40}} 
+                    active={activeStep === 2}
+                    color={mode === 'onPremise' ? "#818cf8" : "#cbd5e1"}
+                  />
+
+                  {/* Step 4: Vector DB -> AI [CONTEXT] */}
+                  <IsoPath 
+                      from={{x: 3, y: 1, height: 40}} 
+                      to={{x: 3, y: -2, height: 35}} 
+                      active={activeStep === 3}
+                      color={mode === 'onPremise' ? "#a78bfa" : "#10b981"}
+                  />
+
+                  {/* Step 5: AI -> Interface (Response) */}
+                  <IsoPath 
+                    from={{x: 3, y: -2, height: 35}} 
+                    to={{x: 1, y: -2, height: 30}} 
+                    active={activeStep === 4}
+                    color={mode === 'onPremise' ? "#a78bfa" : "#10b981"}
+                  />
+
+                    {/* Step 6: Interface -> User (Visualization) */}
+                    <IsoPath 
+                    from={{x: 1, y: -2, height: 30}} 
+                    to={{x: -2, y: 2, height: 20}} 
+                    active={activeStep === 5}
+                    color={mode === 'onPremise' ? "#818cf8" : "#cbd5e1"}
+                  />
 
               </g>
 
@@ -450,14 +466,17 @@ const WorkflowVisualizer: React.FC = () => {
               {mode === 'cloud' && (
                 <>
                   <text x="120" y="170" fill="#0891b2" fontSize="12" fontWeight="bold">CLOUD CLIENTE</text>
-                  <text x="300" y="-40" fill="#059669" fontSize="12" fontWeight="bold">CLOUD ESTERNO</text>
+                  <text x="200" y="-80" fill="#059669" fontSize="12" fontWeight="bold">CLOUD ESTERNO</text>
                 </>
+              )}
+               {mode === 'onPremise' && (
+                <text x="120" y="170" fill="#6366f1" fontSize="12" fontWeight="bold">SERVER LOCALI</text>
               )}
 
             </svg>
             
             <div className="absolute bottom-4 right-4 bg-white/80 backdrop-blur px-3 py-1 rounded-lg text-xs font-mono text-gray-500 border border-gray-200">
-               {mode === 'cloud' ? 'Data Access: Hybrid' : 'Data Access: Internal Only'}
+               {mode === 'cloud' ? 'Data Access: Hybrid' : 'Data Access: Fully Isolated'}
             </div>
           </div>
 
