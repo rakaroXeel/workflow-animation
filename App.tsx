@@ -3,28 +3,54 @@ import {
   MessageSquare, 
   X, 
   Send, 
-  CheckCircle, 
   BrainCircuit,
   Bot,
-  Cloud,
-  Server,
   Database,
-  ShieldCheck,
-  Building,
-  FileText,
-  Lock,
-  User,
   Layout,
   HardDrive,
-  Cpu
+  Cpu,
+  User
 } from 'lucide-react';
 import { WORKFLOW_INFO } from './constants';
 import { ChatMessage } from './types';
 import { sendMessageToGemini } from './services/geminiService';
 
+// --- Types for Positioning ---
+interface GridPos {
+  x: number;
+  y: number;
+}
+
+interface BlockPositions {
+  user: GridPos;
+  storage: GridPos;
+  interface: GridPos;
+  vectorDb: GridPos;
+  ai: GridPos;
+}
+
+// Default positions for Cloud mode
+const DEFAULT_CLOUD_POS: BlockPositions = {
+  user: { x: -2, y: 2 },
+  storage: { x: -2, y: 0 },
+  interface: { x: 1, y: -2 },
+  vectorDb: { x: 3, y: 1 },
+  ai: { x: 3, y: -2 },
+};
+
+// Default positions for On-Premise mode
+const DEFAULT_PREM_POS: BlockPositions = {
+  user: { x: -2, y: 2 },
+  storage: { x: -2, y: 0 },
+  interface: { x: 0, y: 2 }, // Interface is internal in on-prem
+  vectorDb: { x: 3, y: 1 },
+  ai: { x: 3, y: -2 }, // AI is internal/local server
+};
+
 // --- Isometric Components ---
 
 const IsoBlock: React.FC<{ 
+  id?: string;
   x: number; 
   y: number; 
   color: string; 
@@ -35,9 +61,10 @@ const IsoBlock: React.FC<{
   icon?: React.ReactNode;
   active?: boolean;
   scale?: number;
-}> = ({ x, y, color, topColor, sideColor, height = 20, label, icon, active, scale = 1 }) => {
+  onMouseDown?: (e: React.MouseEvent) => void;
+  isDraggable?: boolean;
+}> = ({ x, y, color, topColor, sideColor, height = 20, label, icon, active, scale = 1, onMouseDown, isDraggable }) => {
   // Simple isometric projection
-  // x increases to bottom-right, y increases to bottom-left
   const tileWidth = 60 * scale;
   const tileHeight = 30 * scale; 
   
@@ -46,11 +73,16 @@ const IsoBlock: React.FC<{
 
   // Animation for active state
   const bounceClass = active ? "animate-bounce-slight" : "";
+  const cursorClass = isDraggable ? "cursor-move hover:brightness-110" : "cursor-default";
 
   return (
-    <g className={`transition-all duration-500 ${bounceClass}`} style={{ transform: `translate(${screenX}px, ${screenY}px)` }}>
+    <g 
+      className={`transition-transform duration-75 ${bounceClass} ${cursorClass}`} 
+      style={{ transform: `translate(${screenX}px, ${screenY}px)` }}
+      onMouseDown={onMouseDown}
+    >
       {/* Shadow */}
-      <path d={`M0 ${20*scale} L-${50*scale} ${45*scale} L0 ${70*scale} L${50*scale} ${45*scale} Z`} fill="rgba(0,0,0,0.1)" />
+      <path d={`M0 ${20*scale} L-${50*scale} ${45*scale} L0 ${70*scale} L${50*scale} ${45*scale} Z`} fill="rgba(0,0,0,0.1)" className="pointer-events-none" />
       
       {/* Left Face */}
       <path d={`M-${30*scale} ${15*scale} L-${30*scale} ${15*scale - height} L0 ${30*scale - height} L0 ${30*scale} Z`} fill={sideColor} />
@@ -96,25 +128,25 @@ const IsoZoneBorder: React.FC<{
   const tileHeight = 30;
   const height = 2; // Floor height
 
-  // Correct calculation for corners of the grid rectangle in isometric space
-  // We need the visual outer corners of the diamond group defined by grid coords [minX, maxX] x [minY, maxY]
+  // Padding to not touch blocks
+  const pad = 0.3;
 
-  // Top Corner: Corresponds to (minX, minY) -> visual top
-  const v1X = (minX - minY) * tileWidth;
-  const v1Y = (minX + minY) * tileHeight - height; 
+  const adjMinX = minX - pad;
+  const adjMaxX = maxX + pad;
+  const adjMinY = minY - pad;
+  const adjMaxY = maxY + pad;
 
-  // Right Corner: Corresponds to (maxX, minY) -> visual right
-  // We add +30 to x and +15 to y because the coordinate origin is center of tile, but we want edge
-  const v2X = (maxX - minY) * tileWidth + 30;
-  const v2Y = (maxX + minY) * tileHeight + 15 - height;
+  const v1X = (adjMinX - adjMinY) * tileWidth;
+  const v1Y = (adjMinX + adjMinY) * tileHeight - height; 
 
-  // Bottom Corner: Corresponds to (maxX, maxY) -> visual bottom
-  const v3X = (maxX - maxY) * tileWidth;
-  const v3Y = (maxX + maxY) * tileHeight + 30 - height;
+  const v2X = (adjMaxX - adjMinY) * tileWidth;
+  const v2Y = (adjMaxX + adjMinY) * tileHeight - height;
 
-  // Left Corner: Corresponds to (minX, maxY) -> visual left
-  const v4X = (minX - maxY) * tileWidth - 30;
-  const v4Y = (minX + maxY) * tileHeight + 15 - height;
+  const v3X = (adjMaxX - adjMaxY) * tileWidth;
+  const v3Y = (adjMaxX + adjMaxY) * tileHeight - height;
+
+  const v4X = (adjMinX - adjMaxY) * tileWidth;
+  const v4Y = (adjMinX + adjMaxY) * tileHeight - height;
 
   const pathD = `M${v1X} ${v1Y} L${v2X} ${v2Y} L${v3X} ${v3Y} L${v4X} ${v4Y} Z`;
 
@@ -128,13 +160,12 @@ const IsoZoneBorder: React.FC<{
         strokeDasharray="8,4"
         className="drop-shadow-sm"
       />
-       {/* Optional Glow */}
       <path 
         d={pathD} 
         fill="none" 
         stroke={color} 
         strokeWidth="4" 
-        opacity="0.2"
+        opacity="0.1"
       />
     </g>
   );
@@ -170,11 +201,11 @@ const IsoPath: React.FC<{
         stroke={active ? "#3b82f6" : color} 
         strokeWidth={active ? 3 : 2} 
         strokeDasharray={dashed ? "5,5" : "none"}
-        className="transition-all duration-300"
+        className="transition-all duration-300 pointer-events-none"
         opacity={active ? 1 : 0.3}
       />
       {active && (
-        <circle r="4" fill={color === "#cbd5e1" ? "#3b82f6" : color}>
+        <circle r="4" fill={color === "#cbd5e1" ? "#3b82f6" : color} className="pointer-events-none">
           <animateMotion dur="1s" repeatCount="indefinite" path={pathD} />
         </circle>
       )}
@@ -185,7 +216,15 @@ const IsoPath: React.FC<{
 const WorkflowVisualizer: React.FC = () => {
   const [mode, setMode] = useState<'cloud' | 'onPremise'>('cloud');
   const [activeStep, setActiveStep] = useState(0);
+  const [positions, setPositions] = useState<BlockPositions>(DEFAULT_CLOUD_POS);
+  const [dragging, setDragging] = useState<{id: keyof BlockPositions, startX: number, startY: number, originX: number, originY: number} | null>(null);
+  
   const info = WORKFLOW_INFO[mode];
+
+  // Reset positions when mode changes
+  useEffect(() => {
+    setPositions(mode === 'cloud' ? DEFAULT_CLOUD_POS : DEFAULT_PREM_POS);
+  }, [mode]);
 
   // Cycle through steps
   useEffect(() => {
@@ -195,8 +234,88 @@ const WorkflowVisualizer: React.FC = () => {
     return () => clearInterval(interval);
   }, [info.steps.length]);
 
+  // --- Drag Logic ---
+  const handleMouseDown = (e: React.MouseEvent, id: keyof BlockPositions) => {
+    e.preventDefault();
+    setDragging({
+      id,
+      startX: e.clientX,
+      startY: e.clientY,
+      originX: positions[id].x,
+      originY: positions[id].y
+    });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!dragging) return;
+    
+    // Convert screen delta to isometric grid delta
+    // ScreenX = (gridX - gridY) * W
+    // ScreenY = (gridX + gridY) * H
+    // Approx inverse: 
+    // dGridX = (dScreenY/H + dScreenX/W) / 2
+    // dGridY = (dScreenY/H - dScreenX/W) / 2
+    
+    const tileWidth = 60;
+    const tileHeight = 30;
+    const dxPx = e.clientX - dragging.startX;
+    const dyPx = e.clientY - dragging.startY;
+
+    const dxGrid = (dyPx / tileHeight + dxPx / tileWidth) / 2;
+    const dyGrid = (dyPx / tileHeight - dxPx / tileWidth) / 2;
+
+    let newX = dragging.originX + dxGrid;
+    let newY = dragging.originY + dyGrid;
+
+    // --- Apply Constraints based on ID and Mode ---
+    // User & Storage & (OnPrem Interface): Company Zone (-2.2 to 0.2, -0.2 to 2.2)
+    const companyBounds = { minX: -2.2, maxX: 0.2, minY: -0.2, maxY: 2.2 };
+    
+    // Cloud Interface & Cloud AI: External Strip (1 to 3.2, -2.2 to -1.8)
+    const externalBounds = { minX: 1.0, maxX: 3.2, minY: -2.5, maxY: -1.5 };
+    
+    // Vector DB: Client Cloud Zone (2.8 to 3.2, 0.8 to 1.2) - mostly locked
+    const clientCloudBounds = { minX: 2.5, maxX: 3.5, minY: 0.5, maxY: 1.5 };
+
+    // OnPrem: AI & VectorDB join the big party but loosely
+    const onPremAllBounds = { minX: -2.2, maxX: 3.5, minY: -2.5, maxY: 2.5 };
+
+    const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max);
+
+    if (mode === 'cloud') {
+       if (dragging.id === 'user' || dragging.id === 'storage') {
+          newX = clamp(newX, companyBounds.minX, companyBounds.maxX);
+          newY = clamp(newY, companyBounds.minY, companyBounds.maxY);
+       } else if (dragging.id === 'interface' || dragging.id === 'ai') {
+          newX = clamp(newX, externalBounds.minX, externalBounds.maxX);
+          newY = clamp(newY, externalBounds.minY, externalBounds.maxY);
+       } else if (dragging.id === 'vectorDb') {
+          newX = clamp(newX, clientCloudBounds.minX, clientCloudBounds.maxX);
+          newY = clamp(newY, clientCloudBounds.minY, clientCloudBounds.maxY);
+       }
+    } else {
+      // On Premise - Everyone is inside the red border, roughly
+      newX = clamp(newX, onPremAllBounds.minX, onPremAllBounds.maxX);
+      newY = clamp(newY, onPremAllBounds.minY, onPremAllBounds.maxY);
+    }
+
+    setPositions(prev => ({
+      ...prev,
+      [dragging.id]: { x: newX, y: newY }
+    }));
+  };
+
+  const handleMouseUp = () => {
+    setDragging(null);
+  };
+
   return (
-    <div className="bg-slate-50 min-h-screen flex flex-col items-center justify-center p-4">
+    <div 
+      className="bg-slate-50 min-h-screen flex flex-col items-center justify-center p-4"
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
       <div className="max-w-7xl w-full mx-auto">
         <div className="text-center mb-10">
           <h2 className="text-blue-500 font-bold tracking-widest uppercase text-sm mb-3">Architettura AI</h2>
@@ -230,10 +349,10 @@ const WorkflowVisualizer: React.FC = () => {
 
         <div className="flex flex-col lg:flex-row items-stretch gap-8 h-full">
           {/* Interactive Visualization */}
-          <div className="lg:w-2/3 h-[500px] md:h-[600px] relative bg-gradient-to-br from-slate-100 to-slate-200 rounded-3xl border border-white shadow-xl flex items-center justify-center overflow-hidden">
+          <div className="lg:w-2/3 h-[500px] md:h-[600px] relative bg-gradient-to-br from-slate-100 to-slate-200 rounded-3xl border border-white shadow-xl flex items-center justify-center overflow-hidden select-none">
              
              {/* Step Indicator Overlay */}
-             <div className="absolute top-6 left-6 z-10 bg-white/90 backdrop-blur px-4 py-3 rounded-xl border border-blue-100 shadow-lg max-w-xs">
+             <div className="absolute top-6 left-6 z-10 bg-white/90 backdrop-blur px-4 py-3 rounded-xl border border-blue-100 shadow-lg max-w-xs pointer-events-none">
                 <span className="text-xs font-bold text-blue-500 uppercase tracking-wider mb-1 block">Step {activeStep + 1}</span>
                 <h4 className="font-bold text-gray-800 text-sm">{info.steps[activeStep].title}</h4>
                 <p className="text-xs text-gray-600 mt-1 leading-relaxed">{info.steps[activeStep].desc}</p>
@@ -246,7 +365,7 @@ const WorkflowVisualizer: React.FC = () => {
                 </div>
              </div>
 
-            <svg viewBox="-400 -250 800 500" className="w-full h-full transform scale-90 md:scale-100">
+            <svg viewBox="-400 -250 800 500" className="w-full h-full transform scale-90 md:scale-100 cursor-default">
               <defs>
                  <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
                     <feGaussianBlur stdDeviation="3" result="blur" />
@@ -293,11 +412,6 @@ const WorkflowVisualizer: React.FC = () => {
                       {/* Generating a large contiguous floor to cover all blocks */}
                       {[0, 1, 2, 3].map(row => (
                          [-2, -1, 0, 1, 2, 3].map(col => {
-                            // Skip some tiles to make it look like a connected facility but not a full rectangle
-                            // We need to cover: (-2,2), (-2,0), (1,-2), (3,1), (3,-2)
-                            // We need to bridge the gap.
-                            
-                            // Let's just render specific coordinate patches to connect them
                             const isZone = 
                               (col <= 0 && row >= 0) || // Original Company area
                               (col >= 1 && row <= 2 && row >= -2) // Cloud area becomes local server room
@@ -317,7 +431,7 @@ const WorkflowVisualizer: React.FC = () => {
                             return null;
                          })
                       ))}
-                      {/* Extra tiles to bridge specific gaps if needed */}
+                      {/* Bridges */}
                        <IsoBlock x={1} y={-1} color="#e2e8f0" topColor="#f1f5f9" sideColor="#cbd5e1" height={2} />
                        <IsoBlock x={1} y={-2} color="#e2e8f0" topColor="#f1f5f9" sideColor="#cbd5e1" height={2} />
                        <IsoBlock x={2} y={-2} color="#e2e8f0" topColor="#f1f5f9" sideColor="#cbd5e1" height={2} />
@@ -329,49 +443,52 @@ const WorkflowVisualizer: React.FC = () => {
                  {mode === 'cloud' ? (
                    // Cloud Mode: Only around Company Zone
                    <IsoZoneBorder 
-                      minX={-2.2} maxX={0.2}
-                      minY={-0.2} maxY={2.2}
+                      minX={-2} maxX={0}
+                      minY={0} maxY={2}
                       color="#ef4444"
                    />
                  ) : (
                    // On Premise Mode: Around EVERYTHING
-                   // Bounding box covering (-2,0) to (3,1) and (-2,2) to (3,-2)
-                   // Roughly minX=-2.2, maxX=3.2, minY=-2.2, maxY=2.2
                    <IsoZoneBorder 
-                      minX={-2.2} maxX={3.5}
-                      minY={-2.5} maxY={2.5}
+                      minX={-2} maxX={3}
+                      minY={-2} maxY={2}
                       color="#ef4444"
                    />
                  )}
 
 
-                 {/* 3. BLOCKS PLACEMENT */}
+                 {/* 3. BLOCKS PLACEMENT (Dynamic Positions) */}
                  
-                 {/* --- COMMON BLOCKS (Different labels based on mode) --- */}
-                 
-                 {/* USER (Start) - Bottom Left */}
+                 {/* USER (Start) */}
                  <IsoBlock 
-                   x={-2} y={2} 
+                   id="user"
+                   x={positions.user.x} y={positions.user.y} 
                    color="#3b82f6" topColor="#60a5fa" sideColor="#2563eb" 
                    height={20} 
                    icon={<User size={18} />} 
                    label="User" 
                    active={activeStep === 0 || activeStep === 5} 
+                   isDraggable={true}
+                   onMouseDown={(e) => handleMouseDown(e, 'user')}
                  />
 
-                 {/* STORAGE (DB) - Top Left */}
+                 {/* STORAGE (DB) */}
                  <IsoBlock 
-                   x={-2} y={0} 
+                   id="storage"
+                   x={positions.storage.x} y={positions.storage.y} 
                    color="#3b82f6" topColor="#60a5fa" sideColor="#2563eb" 
                    height={25} 
                    icon={<HardDrive size={18} />} 
                    label="Int. Storage" 
                    active={activeStep === 1} 
+                   isDraggable={true}
+                   onMouseDown={(e) => handleMouseDown(e, 'storage')}
                  />
                  
                  {/* INTERFACE (SaaS vs Intranet) */}
                  <IsoBlock 
-                    x={1} y={-2} 
+                    id="interface"
+                    x={positions.interface.x} y={positions.interface.y} 
                     color={mode === 'cloud' ? "#475569" : "#6366f1"} 
                     topColor={mode === 'cloud' ? "#64748b" : "#818cf8"} 
                     sideColor={mode === 'cloud' ? "#334155" : "#4f46e5"} 
@@ -379,11 +496,14 @@ const WorkflowVisualizer: React.FC = () => {
                     icon={<Layout size={20} />} 
                     label={mode === 'cloud' ? "Interface" : "Intranet App"} 
                     active={activeStep === 0 || activeStep === 2 || activeStep === 4 || activeStep === 5} 
+                    isDraggable={true}
+                    onMouseDown={(e) => handleMouseDown(e, 'interface')}
                   />
 
                  {/* VECTOR DB */}
                  <IsoBlock 
-                   x={3} y={1} 
+                   id="vectorDb"
+                   x={positions.vectorDb.x} y={positions.vectorDb.y} 
                    color={mode === 'cloud' ? "#06b6d4" : "#6366f1"} 
                    topColor={mode === 'cloud' ? "#22d3ee" : "#818cf8"} 
                    sideColor={mode === 'cloud' ? "#0891b2" : "#4f46e5"} 
@@ -391,91 +511,93 @@ const WorkflowVisualizer: React.FC = () => {
                    icon={<Database size={20} />} 
                    label="Vector DB" 
                    active={activeStep === 1 || activeStep === 2 || activeStep === 3} 
+                   isDraggable={true}
+                   onMouseDown={(e) => handleMouseDown(e, 'vectorDb')}
                  />
 
                  {/* AI MODEL (OpenAI vs DeepSeek) */}
                  <IsoBlock 
-                   x={3} y={-2} 
-                   color={mode === 'cloud' ? "#10b981" : "#8b5cf6"} // Green for OpenAI, Violet for DeepSeek
+                   id="ai"
+                   x={positions.ai.x} y={positions.ai.y} 
+                   color={mode === 'cloud' ? "#10b981" : "#8b5cf6"} 
                    topColor={mode === 'cloud' ? "#34d399" : "#a78bfa"} 
                    sideColor={mode === 'cloud' ? "#059669" : "#7c3aed"} 
                    height={35} 
                    icon={mode === 'cloud' ? <BrainCircuit size={20} /> : <Cpu size={20} />} 
                    label={mode === 'cloud' ? "OpenAI API" : "LLM Service"} 
                    active={activeStep === 3 || activeStep === 4} 
+                   isDraggable={true}
+                   onMouseDown={(e) => handleMouseDown(e, 'ai')}
                  />
 
 
-                 {/* --- PATHS --- */}
-                 
-                 {/* Paths are geometrically the same for both modes in this updated layout, 
-                     but the meaning changes. We can reuse the coordinates. */}
+                 {/* --- PATHS (Dynamic) --- */}
                  
                   {/* Step 1: User -> Interface */}
                   <IsoPath 
-                    from={{x: -2, y: 2, height: 20}} 
-                    to={{x: 1, y: -2, height: 30}} 
+                    from={{x: positions.user.x, y: positions.user.y, height: 20}} 
+                    to={{x: positions.interface.x, y: positions.interface.y, height: 30}} 
                     active={activeStep === 0}
                     color={mode === 'onPremise' ? "#818cf8" : "#cbd5e1"}
                   />
 
                   {/* Step 2: Storage -> Vector DB [SYNC] */}
                   <IsoPath 
-                    from={{x: -2, y: 0, height: 25}} 
-                    to={{x: 3, y: 1, height: 40}} 
+                    from={{x: positions.storage.x, y: positions.storage.y, height: 25}} 
+                    to={{x: positions.vectorDb.x, y: positions.vectorDb.y, height: 40}} 
                     active={activeStep === 1}
                     color={mode === 'onPremise' ? "#818cf8" : "#06b6d4"} 
                   />
 
                   {/* Step 3: Interface -> Vector DB [SEARCH] */}
                   <IsoPath 
-                    from={{x: 1, y: -2, height: 30}} 
-                    to={{x: 3, y: 1, height: 40}} 
+                    from={{x: positions.interface.x, y: positions.interface.y, height: 30}} 
+                    to={{x: positions.vectorDb.x, y: positions.vectorDb.y, height: 40}} 
                     active={activeStep === 2}
                     color={mode === 'onPremise' ? "#818cf8" : "#cbd5e1"}
                   />
 
                   {/* Step 4: Vector DB -> AI [CONTEXT] */}
                   <IsoPath 
-                      from={{x: 3, y: 1, height: 40}} 
-                      to={{x: 3, y: -2, height: 35}} 
+                      from={{x: positions.vectorDb.x, y: positions.vectorDb.y, height: 40}} 
+                      to={{x: positions.ai.x, y: positions.ai.y, height: 35}} 
                       active={activeStep === 3}
                       color={mode === 'onPremise' ? "#a78bfa" : "#10b981"}
                   />
 
                   {/* Step 5: AI -> Interface (Response) */}
                   <IsoPath 
-                    from={{x: 3, y: -2, height: 35}} 
-                    to={{x: 1, y: -2, height: 30}} 
+                    from={{x: positions.ai.x, y: positions.ai.y, height: 35}} 
+                    to={{x: positions.interface.x, y: positions.interface.y, height: 30}} 
                     active={activeStep === 4}
                     color={mode === 'onPremise' ? "#a78bfa" : "#10b981"}
                   />
 
                     {/* Step 6: Interface -> User (Visualization) */}
                     <IsoPath 
-                    from={{x: 1, y: -2, height: 30}} 
-                    to={{x: -2, y: 2, height: 20}} 
+                    from={{x: positions.interface.x, y: positions.interface.y, height: 30}} 
+                    to={{x: positions.user.x, y: positions.user.y, height: 20}} 
                     active={activeStep === 5}
                     color={mode === 'onPremise' ? "#818cf8" : "#cbd5e1"}
                   />
 
               </g>
 
-              {/* Legend/Annotations */}
-              <text x="-350" y="180" fill="#94a3b8" fontSize="12" fontWeight="bold">AMBIENTE AZIENDALE</text>
+              {/* Legend/Annotations - Calculated approximate screen pos from base coords */}
+              <text x="-350" y="180" fill="#94a3b8" fontSize="12" fontWeight="bold" className="pointer-events-none">AMBIENTE AZIENDALE</text>
               {mode === 'cloud' && (
                 <>
-                  <text x="120" y="170" fill="#0891b2" fontSize="12" fontWeight="bold">CLOUD CLIENTE</text>
-                  <text x="200" y="-80" fill="#059669" fontSize="12" fontWeight="bold">CLOUD ESTERNO</text>
+                  <text x="120" y="170" fill="#0891b2" fontSize="12" fontWeight="bold" className="pointer-events-none">CLOUD CLIENTE</text>
+                  <text x="300" y="-40" fill="#059669" fontSize="12" fontWeight="bold" className="pointer-events-none">CLOUD ESTERNO</text>
                 </>
               )}
                {mode === 'onPremise' && (
-                <text x="120" y="170" fill="#6366f1" fontSize="12" fontWeight="bold">SERVER LOCALI</text>
+                <text x="120" y="170" fill="#6366f1" fontSize="12" fontWeight="bold" className="pointer-events-none">SERVER LOCALI</text>
               )}
 
             </svg>
             
-            <div className="absolute bottom-4 right-4 bg-white/80 backdrop-blur px-3 py-1 rounded-lg text-xs font-mono text-gray-500 border border-gray-200">
+            <div className="absolute bottom-4 right-4 bg-white/80 backdrop-blur px-3 py-1 rounded-lg text-xs font-mono text-gray-500 border border-gray-200 pointer-events-none">
                {mode === 'cloud' ? 'Data Access: Hybrid' : 'Data Access: Fully Isolated'}
             </div>
           </div>
